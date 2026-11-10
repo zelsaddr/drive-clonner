@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Sesi login & rahasia (JANGAN commit)
+browser_profile/
+
+# Output & data user
+downloads/
+recordings/
+config.json
+
+# File sementara unduhan
+*.part*
+*.vid.mp4
+*.aud.m4a
+
+# OS / editor
+Thumbs.db
+desktop.ini
+.DS_Store
