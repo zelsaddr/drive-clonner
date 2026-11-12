@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 import time
 
 import requests
@@ -69,10 +70,30 @@ class DriveBrowser:
             self._start_stealth()
         return self.page
 
-    def _start_cdp(self):
+    def _ensure_playwright_chromium(self):
+        """Return Playwright's bundled Chromium path, auto-installing it first if needed."""
+        try:
+            return self.pw.chromium.executable_path
+        except Exception:
+            subprocess.check_call([sys.executable, "-m", "playwright", "install", "chromium"])
+            return self.pw.chromium.executable_path
+
+    def _runtime_binary(self):
+        """Resolve a Chromium/Chrome executable, preferring system Chrome."""
         chrome = _find_chrome()
-        if not chrome:
-            raise RuntimeError("Chrome tidak ditemukan. Install Chrome atau gunakan mode stealth.")
+        if chrome:
+            return chrome
+        try:
+            return self._ensure_playwright_chromium()
+        except Exception as exc:
+            raise RuntimeError(
+                "Chrome tidak ditemukan dan Chromium Playwright gagal diinstal otomatis.\n"
+                "Jalankan manual: %s -m playwright install chromium\nDetail: %s"
+                % (sys.executable, exc)
+            )
+
+    def _start_cdp(self):
+        chrome = self._runtime_binary()
 
         self._port = self.cdp_port
         endpoint = "http://127.0.0.1:%d" % self._port
@@ -112,13 +133,19 @@ class DriveBrowser:
 
     def _start_stealth(self):
         os.makedirs(self.profile_dir, exist_ok=True)
+        launch_kwargs = {
+            "headless": self.headless,
+            "viewport": None,
+            "no_viewport": True,
+            "args": STEALTH_ARGS + ["--start-maximized"],
+        }
+        if _find_chrome():
+            launch_kwargs["channel"] = "chrome"
+        else:
+            self._ensure_playwright_chromium()
         self.context = self.pw.chromium.launch_persistent_context(
             self.profile_dir,
-            channel="chrome",
-            headless=self.headless,
-            viewport=None,
-            no_viewport=True,
-            args=STEALTH_ARGS + ["--start-maximized"],
+            **launch_kwargs,
         )
         self.context.add_init_script(_stealth_script())
         self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
@@ -137,6 +164,7 @@ class DriveBrowser:
         raise RuntimeError("Gagal menyambung ke Chrome (CDP timeout).")
 
     def close(self):
+        # 1) Graceful close via CDP (also lets Chrome flush its profile/cookies).
         try:
             if self.context is not None and self.page is not None:
                 try:
@@ -146,26 +174,75 @@ class DriveBrowser:
                     pass
         except Exception:
             pass
-        time.sleep(0.4)
+
+        # 2) Wait for Chrome to actually exit so the Playwright driver finishes
+        #    dispatching close events before we tear it down (avoids an EPIPE
+        #    crash in the Node driver on Windows).
+        self._wait_cdp_dead("http://127.0.0.1:%d" % self.cdp_port, timeout=10.0)
+        time.sleep(0.3)
+
+        # 3) Stop the Playwright driver.
         if self.pw is not None:
             try:
                 self.pw.stop()
             except Exception:
                 pass
-        if self._chrome_proc is not None:
-            try:
-                self._chrome_proc.terminate()
-            except Exception:
-                pass
-            self._chrome_proc = None
+            self.pw = None
+
+        # 4) Make sure the Chrome process tree is gone.
+        self._terminate_chrome(self._chrome_proc)
+        self._chrome_proc = None
+
         self.context = None
         self.page = None
         self._browser = None
-        self.pw = None
+
+    def _wait_cdp_dead(self, endpoint, timeout=10.0):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                requests.get(endpoint + "/json/version", timeout=1)
+            except Exception:
+                return
+            time.sleep(0.2)
+
+    def _terminate_chrome(self, proc):
+        if proc is None:
+            return
+        # Give graceful shutdown a moment to flush the profile before hard-kill.
+        try:
+            proc.wait(timeout=2.0)
+            return
+        except Exception:
+            pass
+        try:
+            if os.name == "nt":
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=10,
+                )
+            else:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except Exception:
+                    proc.kill()
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
 
     def open_shared_with_me(self):
         self.page.goto(SHARED_URL, wait_until="domcontentloaded", timeout=90000)
         self.page.wait_for_timeout(3000)
+
+    def is_logged_in(self, timeout=90000):
+        """Navigate to Shared-with-me and report whether we are past the Google login page."""
+        self.page.goto(SHARED_URL, wait_until="domcontentloaded", timeout=timeout)
+        return "accounts.google.com" not in (self.page.url or "")
 
     def cookies(self):
         if self.context is None:

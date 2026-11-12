@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gdrive Clonner</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #111a2c;
+      --panel2: #182338;
+      --line: #22304a;
+      --line-soft: #1b2740;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --text: #e2e8f0;
+      --muted: #8ba0c0;
+      --dim: #64748b;
+      --ok: #34d399;
+      --warn: #fb923c;
+      --err: #f87171;
+      --blue: #60a5fa;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex; flex-direction: column; overflow: hidden;
+      background: var(--bg); color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+    }
+    /* scrollbars */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: #2b3a55; border-radius: 8px; }
+    ::-webkit-scrollbar-thumb:hover { background: #37496a; }
+    ::-webkit-scrollbar-track { background: transparent; }
+
+    /* header */
+    .topbar {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; margin-right: 4px; }
+    .brand .logo {
+      width: 28px; height: 28px; border-radius: 8px; background: var(--accent);
+      display: grid; place-items: center; font-weight: 700; color: #fff;
+    }
+    .brand .title { font-weight: 600; font-size: 15px; line-height: 1.15; }
+    .brand .subtitle { font-size: 11px; color: var(--dim); }
+    .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    .btn {
+      padding: 7px 13px; border: 1px solid transparent; border-radius: 9px;
+      background: #25304a; color: var(--text); font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: background .15s ease, transform .05s ease, border-color .15s ease;
+    }
+    .btn:hover { background: #2f3d5e; }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--accent); color: #fff; font-weight: 600; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:disabled { background: #22304a; color: var(--dim); cursor: not-allowed; }
+    .btn.ghost { background: transparent; border-color: var(--line); color: var(--muted); }
+    .btn.ghost:hover { background: #1b2740; color: var(--text); }
+
+    /* options */
+    .options {
+      display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+      padding: 9px 16px; background: var(--panel2); border-bottom: 1px solid var(--line); font-size: 13px;
+    }
+    .opt { display: flex; align-items: center; gap: 7px; cursor: pointer; user-select: none; }
+    .opt input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+    .opt select {
+      background: #25304a; color: var(--text); border: 1px solid var(--line);
+      border-radius: 8px; padding: 5px 8px; font-size: 13px; cursor: pointer;
+    }
+    .opt .lbl { color: var(--muted); }
+
+    /* main list */
+    .content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .list-head {
+      padding: 10px 18px 6px; font-size: 11px; font-weight: 700; letter-spacing: .06em;
+      text-transform: uppercase; color: var(--dim);
+    }
+    .tree { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
+    .empty-hint { padding: 48px 16px; text-align: center; color: var(--dim); }
+
+    .tree-row {
+      display: flex; align-items: center; gap: 8px; padding: 4px 8px;
+      border-radius: 9px; cursor: pointer; user-select: none;
+      transition: background .12s ease;
+    }
+    .tree-row:hover { background: rgba(148, 163, 184, .10); }
+    .tree-row .check { width: 15px; height: 15px; accent-color: var(--accent); flex: none; }
+    .tree-row .chev {
+      width: 16px; height: 16px; flex: none; display: grid; place-items: center;
+      color: var(--muted); font-size: 11px; transition: transform .15s ease;
+    }
+    .tree-row .chev.open { transform: rotate(90deg); }
+    .tree-row .ico { width: 15px; height: 15px; flex: none; display: grid; place-items: center; }
+    .tree-row .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13.5px; }
+    .tree-row .name.is-folder { color: var(--blue); }
+    .tree-row .name.is-video { color: var(--warn); }
+    .tree-row .name.is-file { color: var(--text); }
+    .tree-row .status { flex: none; max-width: 130px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; color: var(--dim); }
+
+    .badge {
+      flex: none; padding: 2px 7px; border-radius: 6px; font-size: 9.5px; font-weight: 700;
+      letter-spacing: .05em; text-transform: uppercase;
+    }
+    .badge.b-folder { background: rgba(96, 165, 250, .15); color: var(--blue); }
+    .badge.b-video { background: rgba(251, 146, 60, .15); color: var(--warn); }
+    .badge.b-file { background: rgba(148, 163, 184, .15); color: var(--muted); }
+    .status.st-ok { color: var(--ok); }
+    .status.st-skip { color: var(--dim); }
+    .status.st-fail { color: var(--err); }
+
+    .tree-loading { display: flex; align-items: center; gap: 8px; padding: 3px 8px; color: var(--dim); font-size: 12px; }
+    .tree-empty { padding: 3px 8px; color: var(--dim); font-size: 12px; }
+    .spinner {
+      width: 13px; height: 13px; flex: none; border-radius: 50%;
+      border: 2px solid rgba(148, 163, 184, .3); border-top-color: var(--accent);
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .fade-in { animation: fadeIn .15s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+
+    /* progress */
+    .progress { padding: 10px 16px; background: var(--panel); border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+    .prog-row { display: flex; align-items: center; gap: 12px; }
+    .prog-label { font-size: 12px; color: var(--muted); width: 180px; flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bar { flex: 1; height: 9px; border-radius: 999px; background: #1e2a42; overflow: hidden; }
+    .bar > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); transition: width .25s ease; }
+    .bar.green > span { background: #10b981; }
+    .prog-right { font-size: 12px; color: var(--dim); max-width: 40%; flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* log */
+    .logwrap { border-top: 1px solid var(--line); background: var(--panel); }
+    .logsummary {
+      display: flex; align-items: center; gap: 8px; padding: 8px 16px; cursor: pointer;
+      font-size: 13px; font-weight: 600; color: var(--muted); user-select: none; list-style: none;
+    }
+    .logsummary::-webkit-details-marker { display: none; }
+    .logsummary:hover { color: var(--text); }
+    .logsummary .caret { transition: transform .15s ease; }
+    details[open] .logsummary .caret { transform: rotate(90deg); }
+    .log {
+      height: 132px; overflow-y: auto; padding: 0 16px 10px; font-family: Consolas, 'Cascadia Mono', monospace;
+      font-size: 11px; line-height: 1.55; color: #cbd5e1; white-space: pre-wrap; word-break: break-word;
+    }
+
+    /* status bar */
+    .statusbar {
+      display: flex; align-items: center; gap: 8px; padding: 7px 16px;
+      background: var(--panel); border-top: 1px solid var(--line); font-size: 12px; color: var(--muted);
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; }
+    .dot.ok { background: var(--ok); }
+    .dot.err { background: var(--err); }
+    #statusText { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">G</div>
+      <div>
+        <div class="title">Gdrive Clonner</div>
+        <div class="subtitle">Shared with Me</div>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button id="btnLogin" class="btn">Buka Browser &amp; Login</button>
+      <button id="btnList" class="btn">Muat List Shared</button>
+      <button id="btnRefresh" class="btn">Refresh</button>
+      <button id="btnSelectAll" class="btn">Pilih Semua</button>
+      <button id="btnPreview" class="btn">Preview</button>
+    </div>
+    <div style="margin-left:auto">
+      <button id="btnDownload" class="btn btn-primary">Mulai Download</button>
+    </div>
+  </header>
+
+  <section class="options">
+    <label class="opt"><input id="optRecursive" type="checkbox" checked /><span>Rekursif folder</span></label>
+    <label class="opt"><input id="optHeadless" type="checkbox" /><span>Headless (tanpa jendela)</span></label>
+    <label class="opt"><input id="optSkip" type="checkbox" checked /><span>Lewati yang sudah ada</span></label>
+    <label class="opt"><span class="lbl">Kualitas video</span>
+      <select id="optQuality">
+        <option>720p</option><option>360p</option><option>1080p</option>
+      </select>
+    </label>
+    <label class="opt"><span class="lbl">File paralel</span>
+      <select id="optParallel">
+        <option>1</option><option>2</option><option>3</option><option selected>4</option>
+        <option>6</option><option>8</option><option>12</option>
+      </select>
+    </label>
+  </section>
+
+  <main class="content">
+    <div class="list-head">Files — Shared with me</div>
+    <div id="tree" class="tree"></div>
+  </main>
+
+  <section class="progress">
+    <div class="prog-row">
+      <span id="overallLabel" class="prog-label">Menunggu...</span>
+      <div class="bar"><span id="overallBar" style="width:0%"></span></div>
+    </div>
+    <div class="prog-row">
+      <span id="bytesLabel" class="prog-label"></span>
+      <div class="bar green"><span id="itemBar" style="width:0%"></span></div>
+      <span id="itemLabel" class="prog-right"></span>
+    </div>
+  </section>
+
+  <section class="logwrap">
+    <details>
+      <summary class="logsummary">
+        <span class="caret">▶</span> Debug Log
+        <button id="btnCopyLog" class="btn ghost" style="margin-left:auto;padding:3px 10px;font-size:11px">Copy</button>
+      </summary>
+      <div id="log" class="log"></div>
+    </details>
+  </section>
+
+  <footer class="statusbar">
+    <span id="statusDot" class="dot"></span>
+    <span id="statusText">Siap</span>
+  </footer>
+
+  <script>
+    const state = {
+      nodes: {},     // id -> {id,name,is_folder,children:[],loaded,loading,expanded,selected,status}
+      roots: [],
+      done: 0,
+      total: 0,
+      active: {},
+      doing: false,
+      opts: { recursive: true, quality: '720p', headless: false, parallel: 4, skip_existing: true },
+    };
+
+    const $ = (sel) => document.querySelector(sel);
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+    /* ---------- event bridge ---------- */
+    window.__driveHandleEvent = function (msg) {
+      try {
+        handleEvent(msg && msg.event, msg && msg.data);
+      } catch (e) {
+        console.error('event error', e);
+      }
+    };
+
+    function handleEvent(ev, data) {
+      switch (ev) {
+        case 'status': setStatus(data); addLog(data); break;
+        case 'log': addLog(data); break;
+        case 'items': setItems(data); break;
+        case 'folder_children': onFolderChildren(data); break;
+        case 'folder_error': onFolderError(data); break;
+        case 'progress': setNodeStatus(data && data.id, data && (data.status || '')); break;
+        case 'headless': setOpt('headless', true); break;
+        case 'queue': onQueue(data); break;
+        case 'file_start': onFileStart(data); break;
+        case 'file_progress': onFileProgress(data); break;
+        case 'file_done': onFileDone(data); break;
+        case 'finished': onFinished(data); break;
+        case 'error': showError(data); break;
+      }
+    }
+
+    /* ---------- status / log ---------- */
+    function setStatus(msg) {
+      const t = String(msg || '');
+      $('#statusText').textContent = t;
+      $('#statusDot').className = t.startsWith('ERROR') ? 'dot err' : 'dot ok';
+    }
+    function addLog(msg) {
+      const log = $('#log');
+      const ts = new Date().toTimeString().slice(0, 8);
+      log.appendChild(el('div', null, '[' + ts + '] ' + msg));
+      while (log.children.length > 400) log.removeChild(log.firstChild);
+      log.scrollTop = log.scrollHeight;
+    }
+    function showError(text) {
+      const lines = String(text || '').split('\n');
+      setStatus('ERROR: ' + (lines[lines.length - 1] || 'ERROR'));
+      addLog('ERROR\n' + text);
+    }
+
+    /* ---------- tree ---------- */
+    function setItems(items) {
+      state.nodes = {};
+      state.roots = [];
+      (items || []).forEach(it => {
+        state.nodes[it.id] = { id: it.id, name: it.name, is_folder: !!it.is_folder, children: [], loaded: false, loading: false, expanded: false, selected: false, status: '' };
+        state.roots.push(it.id);
+      });
+      renderTree();
+      setStatus((items || []).length + ' items');
+    }
+
+    function onFolderChildren(data) {
+      const node = state.nodes[data.id];
+      if (!node) return;
+      node.loaded = true;
+      node.loading = false;
+      node.children = [];
+      (data.children || []).forEach(c => {
+        if (c.id === data.id) return;
+        let child = state.nodes[c.id];
+        if (!child) {
+          child = { id: c.id, name: c.name, is_folder: !!c.is_folder, children: [], loaded: false, loading: false, expanded: false, selected: false, status: '' };
+          state.nodes[c.id] = child;
+        }
+        child.name = c.name;
+        child.is_folder = !!c.is_folder;
+        node.children.push(c.id);
+      });
+      renderTree();
+    }
+
+    function onFolderError(data) {
+      const node = state.nodes[data.id];
+      if (node) { node.loaded = true; node.loading = false; }
+      setStatus('Gagal membuka folder: ' + (data.error || ''));
+    }
+
+    function setNodeStatus(id, status) {
+      if (id && state.nodes[id]) { state.nodes[id].status = status; renderTree(); }
+    }
+
+    function renderTree() {
+      const root = $('#tree');
+      root.innerHTML = '';
+      if (!state.roots.length) {
+        root.appendChild(el('div', 'empty-hint', 'Belum ada item. Klik "Buka Browser & Login" lalu "Muat List Shared".'));
+        return;
+      }
+      const visited = new Set();
+      state.roots.forEach(id => renderNode(root, id, 0, visited));
+    }
+
+    function renderNode(container, id, depth, visited) {
+      // Guard against cyclic folder trees (the same folder reachable again deeper
+      // in its own descendants), which would otherwise recurse forever.
+      if (visited.has(id)) return;
+      visited.add(id);
+      const node = state.nodes[id];
+      if (!node) return;
+
+      const row = el('div', 'tree-row fade-in');
+      row.style.paddingLeft = (8 + depth * 18) + 'px';
+
+      const cb = el('input', 'check');
+      cb.type = 'checkbox';
+      cb.checked = !!node.selected;
+      cb.addEventListener('click', e => e.stopPropagation());
+      cb.addEventListener('change', () => { node.selected = cb.checked; });
+      row.appendChild(cb);
+
+      if (node.is_folder) {
+        const chev = el('button', 'chev' + (node.expanded ? ' open' : ''));
+        chev.textContent = '▶';
+        chev.addEventListener('click', e => { e.stopPropagation(); toggleFolder(id); });
+        row.appendChild(chev);
+      } else {
+        row.appendChild(el('span', 'chev'));
+      }
+
+      const icon = el('span', 'ico');
+      icon.innerHTML = node.is_folder ? ICON_FOLDER : (isVideoName(node.name) ? ICON_VIDEO : ICON_FILE);
+      row.appendChild(icon);
+
+      let nameCls = 'name ';
+      if (node.is_folder) nameCls += 'is-folder';
+      else if (isVideoName(node.name)) nameCls += 'is-video';
+      else nameCls += 'is-file';
+      row.appendChild(el('span', nameCls, node.name));
+
+      const badge = el('span', 'badge');
+      if (node.is_folder) { badge.textContent = 'Folder'; badge.classList.add('b-folder'); }
+      else if (isVideoName(node.name)) { badge.textContent = 'Video'; badge.classList.add('b-video'); }
+      else { badge.textContent = 'File'; badge.classList.add('b-file'); }
+      row.appendChild(badge);
+
+      if (node.status) {
+        const st = el('span', 'status');
+        const s = node.status;
+        if (s.startsWith('ok')) { st.textContent = '✓'; st.classList.add('st-ok'); }
+        else if (s === 'skip') { st.textContent = 'skipped'; st.classList.add('st-skip'); }
+        else if (s.startsWith('gagal') || s.startsWith('error') || s.startsWith('tidak')) { st.textContent = s; st.classList.add('st-fail'); }
+        else { st.textContent = s; }
+        row.appendChild(st);
+      }
+
+      row.addEventListener('click', () => {
+        if (node.is_folder) toggleFolder(id);
+        else toggleSelect(id);
+      });
+
+      container.appendChild(row);
+
+      if (node.expanded) {
+        if (node.loaded) {
+          if (node.children.length) {
+            node.children.forEach(cid => renderNode(container, cid, depth + 1, visited));
+          } else {
+            const empty = el('div', 'tree-empty', '(kosong)');
+            empty.style.paddingLeft = (40 + depth * 18) + 'px';
+            container.appendChild(empty);
+          }
+        } else {
+          const loading = el('div', 'tree-loading');
+          loading.style.paddingLeft = (40 + depth * 18) + 'px';
+          const sp = el('span', 'spinner');
+          loading.appendChild(sp);
+          loading.appendChild(el('span', null, 'Memuat isi folder...'));
+          container.appendChild(loading);
+        }
+      }
+    }
+
+    function toggleFolder(id) {
+      const node = state.nodes[id];
+      if (!node) return;
+      node.expanded = !node.expanded;
+      if (node.expanded && !node.loaded && !node.loading) {
+        node.loading = true;
+        renderTree();
+        if (window.pywebview && window.pywebview.api) window.pywebview.api.select_folder(id);
+      } else {
+        renderTree();
+      }
+    }
+
+    function toggleSelect(id) {
+      const node = state.nodes[id];
+      if (node) { node.selected = !node.selected; renderTree(); }
+    }
+
+    function selectedItems() {
+      const out = [];
+      Object.values(state.nodes).forEach(n => { if (n.selected) out.push({ id: n.id, name: n.name, is_folder: n.is_folder }); });
+      return out;
+    }
+
+    /* ---------- progress ---------- */
+    function onQueue(data) {
+      state.total = data.total || 0;
+      state.done = 0;
+      state.active = {};
+      state.doing = true;
+      $('#overallBar').style.width = '0%';
+      $('#itemBar').style.width = '0%';
+      $('#overallLabel').textContent = 'File 0/' + state.total;
+      $('#bytesLabel').textContent = 'Menyiapkan ' + state.total + ' file...';
+      $('#itemLabel').textContent = '';
+    }
+    function onFileStart(data) {
+      state.active[data.id] = { name: data.name || data.id, done: 0, total: 0 };
+      addLog('↓ ' + (data.name || data.id));
+      redrawProgress();
+    }
+    function onFileProgress(data) {
+      const a = state.active[data.id];
+      if (!a) return;
+      a.done = data.done || 0;
+      if (data.total) a.total = data.total;
+      redrawProgress();
+    }
+    function onFileDone(data) {
+      delete state.active[data.id];
+      state.done += 1;
+      setNodeStatus(data.id, data.status || '');
+      const name = data.name || '';
+      const status = data.status || '';
+      const reason = data.reason || '';
+      if (status.startsWith('ok') && data.bytes) {
+        const spd = data.elapsed ? (data.bytes / data.elapsed) : 0;
+        addLog(name + ' -> ' + status + ' (' + fmtBytes(data.bytes) + ', ' + (data.elapsed || 0).toFixed(1) + 's, ' + fmtBytes(spd) + '/s)');
+      } else if (reason) {
+        addLog(name + ' -> ' + status + ' (' + reason + ')');
+      } else {
+        addLog(name + ' -> ' + status);
+      }
+      redrawProgress();
+    }
+    function onFinished(data) {
+      state.doing = false;
+      state.total = 0; state.done = 0; state.active = {};
+      $('#overallBar').style.width = '100%';
+      $('#itemBar').style.width = '100%';
+      $('#bytesLabel').textContent = 'Selesai';
+      $('#overallLabel').textContent = 'File ' + (data.total || 0) + '/' + (data.total || 0);
+      setStatus('Selesai: ' + (data.ok || 0) + ' berhasil, ' + (data.skip || 0) + ' dilewati, ' + (data.fail || 0) + ' gagal.');
+    }
+
+    let _lastAgg = { t: 0, bytes: 0, speed: 0 };
+    function redrawProgress() {
+      if (!state.doing) return;
+      const done = Object.values(state.active).reduce((s, a) => s + (a.done || 0), 0);
+      const known = Object.values(state.active).reduce((s, a) => s + (a.total || 0), 0);
+      const now = Date.now() / 1000;
+      const dt = now - _lastAgg.t;
+      const dd = done - _lastAgg.bytes;
+      if (dt >= 0.2 && dd >= 0) {
+        const inst = dd / dt;
+        _lastAgg.speed = _lastAgg.speed <= 0 ? inst : (_lastAgg.speed * 0.6 + inst * 0.4);
+        _lastAgg.t = now;
+        _lastAgg.bytes = done;
+      }
+      const n = Object.keys(state.active).length;
+      $('#overallLabel').textContent = 'File ' + state.done + '/' + state.total + ' · ' + n + ' aktif';
+      $('#overallBar').style.width = (state.total ? (state.done / state.total * 100) : 0) + '%';
+      const names = Object.values(state.active).map(a => a.name).slice(0, 3).join(', ');
+      $('#itemLabel').textContent = names + (Object.keys(state.active).length > 3 ? ', …' : '');
+      const spdTxt = _lastAgg.speed > 0 ? fmtBytes(_lastAgg.speed) + '/s' : '-';
+      if (known) {
+        $('#itemBar').style.width = (done / known * 100) + '%';
+        $('#bytesLabel').textContent = fmtBytes(done) + ' / ' + fmtBytes(known) + ' · ' + spdTxt;
+      } else {
+        $('#itemBar').style.width = '0%';
+        $('#bytesLabel').textContent = fmtBytes(done) + ' diunduh · ' + spdTxt;
+      }
+    }
+
+    /* ---------- util ---------- */
+    function fmtBytes(n) {
+      if (n == null) return '?';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      let i = 0, v = n;
+      while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+      return (i === 0 ? v.toFixed(0) : v.toFixed(1)) + ' ' + units[i];
+    }
+    function isVideoName(name) {
+      const ext = (String(name || '').split('.').pop() || '').toLowerCase();
+      return ['mp4','m4v','mov','mkv','webm','avi','wmv','flv','mpg','mpeg','ts','m2ts','3gp','ogv'].includes(ext);
+    }
+
+    const ICON_FOLDER = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+    const ICON_VIDEO = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>';
+    const ICON_FILE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>';
+
+    /* ---------- options ---------- */
+    function setOpt(key, val) {
+      state.opts[key] = val;
+      const map = { recursive: '#optRecursive', headless: '#optHeadless', skip_existing: '#optSkip', quality: '#optQuality', parallel: '#optParallel' };
+      const elm = $(map[key]);
+      if (elm) {
+        if (elm.type === 'checkbox') elm.checked = !!val;
+        else elm.value = String(val);
+      }
+    }
+    function bindOpt() {
+      $('#optRecursive').addEventListener('change', e => { state.opts.recursive = e.target.checked; apiCall('set_option', ['recursive', e.target.checked]); });
+      $('#optHeadless').addEventListener('change', e => { state.opts.headless = e.target.checked; apiCall('set_option', ['headless', e.target.checked]); });
+      $('#optSkip').addEventListener('change', e => { state.opts.skip_existing = e.target.checked; apiCall('set_option', ['skip_existing', e.target.checked]); });
+      $('#optQuality').addEventListener('change', e => apiCall('set_option', ['quality', e.target.value]));
+      $('#optParallel').addEventListener('change', e => apiCall('set_option', ['parallel', parseInt(e.target.value, 10)]));
+    }
+
+    function apiCall(method, args) {
+      if (window.pywebview && window.pywebview.api && window.pywebview.api[method]) {
+        return window.pywebview.api[method].apply(null, args || []);
+      }
+      return Promise.resolve();
+    }
+
+    function copyText(text) {
+      return new Promise((resolve, reject) => {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(() => resolve(), () => legacyCopy(text, resolve, reject));
+        } else {
+          legacyCopy(text, resolve, reject);
+        }
+      });
+    }
+
+    function legacyCopy(text, resolve, reject) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '0';
+        ta.style.left = '0';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        ok ? resolve() : reject(new Error('execCommand copy failed'));
+      } catch (e) {
+        reject(e);
+      }
+    }
+
+    /* ---------- buttons ---------- */
+    function bindButtons() {
+      $('#btnLogin').addEventListener('click', () => apiCall('login'));
+      $('#btnList').addEventListener('click', () => apiCall('list_shared'));
+      $('#btnRefresh').addEventListener('click', () => apiCall('list_shared'));
+      $('#btnSelectAll').addEventListener('click', () => {
+        state.roots.forEach(id => { if (state.nodes[id]) state.nodes[id].selected = true; });
+        renderTree();
+      });
+      $('#btnPreview').addEventListener('click', () => {
+        const sel = selectedItems();
+        if (!sel.length) { setStatus('Pilih item dulu.'); return; }
+        apiCall('preview', [sel[0]]);
+      });
+      $('#btnDownload').addEventListener('click', () => {
+        const sel = selectedItems();
+        if (!sel.length) { setStatus('Pilih item dulu.'); return; }
+        apiCall('start_clone', [{
+          items: sel,
+          recursive: state.opts.recursive,
+          quality: state.opts.quality,
+          parallel: state.opts.parallel,
+          skip_existing: state.opts.skip_existing,
+        }]);
+      });
+      $('#btnCopyLog').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const text = Array.from($('#log').children).map(c => c.textContent).join('\n');
+        if (!text) { setStatus('Log masih kosong.'); return; }
+        copyText(text)
+          .then(() => setStatus('Log disalin ke clipboard.'))
+          .catch(() => setStatus('Gagal menyalin log.'));
+      });
+    }
+
+    /* ---------- init ---------- */
+    let _initialized = false;
+    function init() {
+      if (_initialized) return;
+      _initialized = true;
+      bindOpt();
+      bindButtons();
+      if (window.pywebview && window.pywebview.api && window.pywebview.api.get_state) {
+        window.pywebview.api.get_state().then(s => {
+          if (!s) return;
+          setOpt('recursive', s.recursive);
+          setOpt('headless', s.headless);
+          setOpt('skip_existing', s.skip_existing);
+          setOpt('quality', s.quality);
+          setOpt('parallel', s.parallel);
+          state.opts = {
+            recursive: !!s.recursive, quality: s.quality || '720p', headless: !!s.headless,
+            parallel: parseInt(s.parallel, 10) || 4, skip_existing: !!s.skip_existing,
+          };
+        }).catch(() => {});
+      }
+    }
+
+    window.addEventListener('pywebviewready', init);
+  </script>
+</body>
+</html>

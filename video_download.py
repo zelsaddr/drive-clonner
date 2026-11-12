@@ -46,7 +46,7 @@ def _retry_log(msg):
 class _Transient(Exception):
     pass
 
-_state = {"endpoint": None, "api_key": None}
+_state = {"endpoint": None, "api_key": None, "authorization": None}
 _lock = threading.Lock()
 
 
@@ -58,8 +58,11 @@ def _sapisidhash(cookies, origin=ORIGIN):
 
 
 def _auth_headers(cookies, origin=ORIGIN, ref=None):
+    # Prefer the Authorization header captured from the browser during discover()
+    # (a valid OAuth/SAPISIDHASH token) over a locally-computed SAPISIDHASH.
+    auth = _state.get("authorization") or _sapisidhash(cookies, origin)
     headers = {
-        "Authorization": _sapisidhash(cookies, origin),
+        "Authorization": auth,
         "X-Goog-AuthUser": "0",
         "Origin": origin,
         "User-Agent": CHROME_UA,
@@ -102,10 +105,10 @@ def _nudge_play(page):
         pass
 
 
-def discover(browser, file_id, timeout=45):
+def discover(browser, file_id, timeout=45, force=False):
     global _state
     with _lock:
-        if _state["endpoint"] and _state["api_key"]:
+        if not force and _state["endpoint"] and _state["api_key"]:
             return _state["endpoint"], _state["api_key"]
 
         page = browser.page
@@ -131,6 +134,14 @@ def discover(browser, file_id, timeout=45):
         resp = captured[0]
         if resp is None:
             raise RuntimeError("gagal menangkap endpoint playback")
+
+        # Capture the exact Authorization header the browser used, so we can reuse
+        # a valid token instead of only a locally-computed SAPISIDHASH.
+        try:
+            h = resp.request.headers
+            _state["authorization"] = h.get("authorization") or h.get("Authorization")
+        except Exception:
+            pass
 
         u = resp.url
         m = re.search(r"https://([^/]+)(/v1/drive/media)", u)
@@ -264,11 +275,12 @@ def _download_to(cookies, url, path, headers, connections=DEFAULT_CONNECTIONS, p
             part_path = "%s.part%04d" % (path, i)
             hdr = {"Range": "bytes=%d-%d" % (start, end)}
             ok = False
+            last_err = None
             for attempt in range(6):
                 try:
                     sess = build_session(cookies)
                     sess.headers.update(headers)
-                    with sess.get(url, headers=hdr, stream=True, timeout=300) as r:
+                    with sess.get(url, headers=hdr, stream=True, timeout=120) as r:
                         if r.status_code in TRANSIENT:
                             raise _Transient(r.status_code)
                         r.raise_for_status()
@@ -278,16 +290,16 @@ def _download_to(cookies, url, path, headers, connections=DEFAULT_CONNECTIONS, p
                                     fh.write(c)
                     ok = True
                     break
-                except _Transient:
-                    _retry_log("server 5xx, retry chunk...")
-                    time.sleep(1.0 * (attempt + 1))
                 except Exception as exc:
-                    with lock:
-                        errors.append(exc)
-                    return
+                    # Read timeouts, broken pipes, truncated responses (IncompleteRead)
+                    # and 5xx are all transient: retry the same chunk on a fresh
+                    # connection instead of failing the whole file.
+                    last_err = exc
+                    _retry_log("chunk %d error, retry %d/6 (%s)" % (i, attempt + 1, type(exc).__name__))
+                    time.sleep(1.0 * (attempt + 1))
             if not ok:
                 with lock:
-                    errors.append(Exception("server 5xx berulang"))
+                    errors.append(last_err or Exception("chunk %d gagal" % i))
                 return
             with lock:
                 parts[i] = part_path

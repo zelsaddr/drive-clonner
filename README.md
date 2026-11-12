@@ -12,17 +12,27 @@ It lists shared items in a tree view and downloads them in parallel. Ordinary fi
 - Adaptive (DASH) video + audio muxing using ffmpeg.
 - Resume-friendly: skips files that already exist.
 - A `.cloner_manifest.json` record of what has been downloaded.
+- Login opens a visible (headful) window and switches to headless automatically once logged in.
+- Stream auth is captured from the browser and refreshed during long runs (avoids 401 partway).
+- Chunk downloads retry transient network errors (read timeout / broken connection) automatically.
 
 ## Requirements
 
 - Python 3.8+
-- Google Chrome
-- ffmpeg (in `PATH`, or set `ffmpeg_path` in `config.json`)
+- Google Chrome **atau** Chromium Playwright (otomatis diunduh jika Chrome tidak ada)
+- Microsoft Edge WebView2 Runtime (biasanya sudah ada di Windows 10/11; dipakai untuk UI webview)
+- ffmpeg (in `PATH`, or set `ffmpeg_path` in `config.json`) — opsional, hanya untuk 1080p
+- Internet (untuk akses Google Drive; unduhan Chromium pertama kali juga butuh internet)
 
 ## Installation
 
 ```bash
 pip install -r requirements.txt
+```
+
+Browser diunduh otomatis saat pertama kali dibutuhkan: jika Google Chrome terpasang di lokasi standar, Chrome dipakai; jika tidak, aplikasi memakai Chromium Playwright dan mengunduhnya sendiri via `playwright install chromium`. Untuk memaksa Chromium Playwright sejak awal:
+
+```bash
 playwright install chromium
 ```
 
@@ -62,11 +72,19 @@ Workflow:
 3. Select items and folders in the tree (expand folders to load their contents).
 4. **Mulai Download** — downloads the selected items.
 
+UI memakai **pywebview + HTML/CSS/JS** (self-contained dark theme, dirender di WebView2) — tidak ada runtime Tailwind/CDN. Backend Python tetap sama. Kalau ingin menjalankan UI webview langsung:
+
+```bash
+python webui.py
+```
+
 ## Project structure
 
 | File | Purpose |
 | --- | --- |
-| `app.py` | CustomTkinter GUI and download orchestration |
+| `webui.py` | pywebview backend (`DriveApi`) + download orchestration |
+| `static/index.html` | Frontend HTML/CSS/JS (toolbar, tree, progress, log) — self-contained, no CDN |
+| `app.py` | Entry point — memanggil `webui.main()` |
 | `browser.py` | Playwright browser control (CDP / stealth launch) |
 | `lister.py` | Scrapes shared items from the Drive UI |
 | `downloader.py` | Standard (non-video) file downloader |

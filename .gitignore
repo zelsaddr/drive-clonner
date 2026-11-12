@@ -6,6 +6,9 @@ __pycache__/
 # Sesi login & rahasia (JANGAN commit)
 browser_profile/
 
+# Data user WebView2 (runtime cache)
+webview_data/
+
 # Output & data user
 downloads/
 recordings/
