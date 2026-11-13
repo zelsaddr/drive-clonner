@@ -16,6 +16,14 @@ It lists shared items in a tree view and downloads them in parallel. Ordinary fi
 - Stream auth is captured from the browser and refreshed during long runs (avoids 401 partway).
 - Chunk downloads retry transient network errors (read timeout / broken connection) automatically.
 
+## Extensions downloaded by stream
+
+Files whose extension is in `VIDEO_EXTENSIONS` (`config.py`) are treated as videos and downloaded from their stream (`videoplayback`) endpoint instead of the standard download endpoint:
+
+`.mp4` `.m4v` `.mov` `.mkv` `.webm` `.avi` `.wmv` `.flv` `.mpg` `.mpeg` `.ts` `.m2ts` `.3gp` `.ogv`
+
+Any other extension is fetched through the ordinary Drive download endpoint. Stream-downloaded videos are always saved with an `.mp4` extension (360p/720p progressive, or DASH video + audio muxed with ffmpeg for 1080p).
+
 ## Requirements
 
 - Python 3.8+
