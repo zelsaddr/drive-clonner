@@ -237,7 +237,11 @@ class DriveBrowser:
 
     def open_shared_with_me(self):
         self.page.goto(SHARED_URL, wait_until="domcontentloaded", timeout=90000)
-        self.page.wait_for_timeout(3000)
+        try:
+            self.page.wait_for_selector("[data-id]", timeout=5000)
+        except Exception:
+            pass
+        self.page.wait_for_timeout(300)
 
     def is_logged_in(self, timeout=90000):
         """Navigate to Shared-with-me and report whether we are past the Google login page."""

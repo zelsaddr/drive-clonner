@@ -85,13 +85,22 @@ def _clean_name(raw):
     return name or "(unnamed)"
 
 
+def wait_for_list(page, timeout=3000):
+    """Wait until the Drive item list has rendered (returns early once items appear)."""
+    try:
+        page.wait_for_selector("[data-id]", timeout=timeout)
+    except Exception:
+        pass
+    page.wait_for_timeout(200)
+
+
 def scroll_shared_list(browser, rounds=15):
     page = browser.page
     last = None
     for _ in range(rounds):
         before = page.evaluate("document.querySelectorAll('[data-id]').length")
         page.mouse.wheel(0, 4000)
-        page.wait_for_timeout(600)
+        page.wait_for_timeout(400)
         after = page.evaluate("document.querySelectorAll('[data-id]').length")
         if after == before and last == after:
             break

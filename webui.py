@@ -9,7 +9,7 @@ import webview
 
 import config as cfg_mod
 from browser import DriveBrowser
-from lister import list_shared_items, scroll_shared_list, scrape_items
+from lister import list_shared_items, scroll_shared_list, scrape_items, wait_for_list
 from downloader import build_session, download, sanitize_filename, is_video_name
 from video_download import download_video, discover
 
@@ -114,6 +114,7 @@ class DriveApi:
         self._abort.set()
         import video_download as vd
         vd.ABORT.set()
+        self._emit("status", "Menghentikan...")
 
     # ---------------------------------------------------------------- events (Python -> JS)
     def _emit(self, event, data=None):
@@ -300,6 +301,7 @@ class DriveApi:
     def _clone(self, payload):
         if self._browser is None:
             self._emit("status", "Buka browser & login dulu, lalu muat list shared.")
+            self._emit("finished", {"ok": 0, "skip": 0, "fail": 0, "total": 0})
             return
 
         self._abort.clear()
@@ -456,6 +458,7 @@ class DriveApi:
                     continue
                 self._flatten([c for c in children if c["id"] != iid], sub, recursive, files, visited)
             else:
+                visited.add(iid)
                 files.append({"id": iid, "name": item["name"], "dest": dest})
 
     def _download_file(self, f, session, cookies, quality, connections, cb):
@@ -482,8 +485,9 @@ class DriveApi:
 
     def _list_folder(self, folder_id):
         url = "https://drive.google.com/drive/folders/%s" % folder_id
-        self._browser.page.goto(url, wait_until="domcontentloaded", timeout=90000)
-        self._browser.page.wait_for_timeout(2500)
+        page = self._browser.page
+        page.goto(url, wait_until="domcontentloaded", timeout=90000)
+        wait_for_list(page)
         scroll_shared_list(self._browser)
         return scrape_items(self._browser)
 

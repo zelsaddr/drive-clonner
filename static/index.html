@@ -59,6 +59,11 @@
     .btn-primary { background: var(--accent); color: #fff; font-weight: 600; }
     .btn-primary:hover { background: var(--accent-hover); }
     .btn-primary:disabled { background: #22304a; color: var(--dim); cursor: not-allowed; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-danger { background: #7f1d1d; color: #fecaca; }
+    .btn-danger:hover { background: #991b1b; }
+    .btn-warning { background: #92400e; color: #fde68a; }
+    .btn-warning:hover { background: #b45309; }
     .btn.ghost { background: transparent; border-color: var(--line); color: var(--muted); }
     .btn.ghost:hover { background: #1b2740; color: var(--text); }
 
@@ -175,6 +180,8 @@
       <button id="btnRefresh" class="btn">Refresh</button>
       <button id="btnSelectAll" class="btn">Pilih Semua</button>
       <button id="btnPreview" class="btn">Preview</button>
+      <button id="btnRetry" class="btn btn-warning" style="display:none">Ulangi yang gagal</button>
+      <button id="btnAbort" class="btn btn-danger" style="display:none">Batal</button>
     </div>
     <div style="margin-left:auto">
       <button id="btnDownload" class="btn btn-primary">Mulai Download</button>
@@ -288,6 +295,8 @@
       const lines = String(text || '').split('\n');
       setStatus('ERROR: ' + (lines[lines.length - 1] || 'ERROR'));
       addLog('ERROR\n' + text);
+      state.doing = false;
+      refreshControls();
     }
 
     /* ---------- tree ---------- */
@@ -334,13 +343,17 @@
 
     function renderTree() {
       const root = $('#tree');
+      const scrollTop = root.scrollTop;
       root.innerHTML = '';
       if (!state.roots.length) {
         root.appendChild(el('div', 'empty-hint', 'Belum ada item. Klik "Buka Browser & Login" lalu "Muat List Shared".'));
+        refreshControls();
         return;
       }
       const visited = new Set();
       state.roots.forEach(id => renderNode(root, id, 0, visited));
+      root.scrollTop = scrollTop;
+      refreshControls();
     }
 
     function renderNode(container, id, depth, visited) {
@@ -358,7 +371,7 @@
       cb.type = 'checkbox';
       cb.checked = !!node.selected;
       cb.addEventListener('click', e => e.stopPropagation());
-      cb.addEventListener('change', () => { node.selected = cb.checked; });
+      cb.addEventListener('change', () => { node.selected = cb.checked; refreshControls(); });
       row.appendChild(cb);
 
       if (node.is_folder) {
@@ -447,6 +460,65 @@
       return out;
     }
 
+    function isFailedStatus(s) {
+      return !!s && (s.startsWith('gagal') || s.startsWith('error') || s.startsWith('tidak'));
+    }
+
+    function failedNodes() {
+      return Object.values(state.nodes).filter(n => isFailedStatus(n.status));
+    }
+
+    function refreshControls() {
+      const n = Object.values(state.nodes).filter(x => x.selected).length;
+      const btn = $('#btnDownload');
+      const abort = $('#btnAbort');
+      const retry = $('#btnRetry');
+      if (state.doing) {
+        btn.textContent = 'Memproses...';
+        btn.disabled = true;
+        abort.style.display = '';
+        retry.style.display = 'none';
+      } else {
+        btn.textContent = n ? ('Mulai Download (' + n + ')') : 'Mulai Download';
+        btn.disabled = n === 0;
+        abort.style.display = 'none';
+        const failed = failedNodes();
+        if (failed.length) {
+          retry.textContent = 'Ulangi yang gagal (' + failed.length + ')';
+          retry.style.display = '';
+        } else {
+          retry.style.display = 'none';
+        }
+      }
+    }
+
+    function beginClone(items) {
+      state.doing = true;
+      state.total = 0; state.done = 0; state.active = {};
+      $('#overallLabel').textContent = 'Memindai...';
+      $('#overallBar').style.width = '0%';
+      $('#itemBar').style.width = '0%';
+      $('#bytesLabel').textContent = '';
+      $('#itemLabel').textContent = '';
+      refreshControls();
+      apiCall('start_clone', [{
+        items: items,
+        recursive: state.opts.recursive,
+        quality: state.opts.quality,
+        parallel: state.opts.parallel,
+        skip_existing: state.opts.skip_existing,
+      }]);
+    }
+
+    function retryFailed() {
+      const failed = failedNodes();
+      if (!failed.length) { setStatus('Tidak ada item yang gagal.'); return; }
+      setStatus('Mengulang ' + failed.length + ' item yang gagal...');
+      beginClone(failed.map(n => ({ id: n.id, name: n.name, is_folder: n.is_folder })));
+      failed.forEach(n => { n.status = ''; });
+      renderTree();
+    }
+
     /* ---------- progress ---------- */
     function onQueue(data) {
       state.total = data.total || 0;
@@ -458,6 +530,7 @@
       $('#overallLabel').textContent = 'File 0/' + state.total;
       $('#bytesLabel').textContent = 'Menyiapkan ' + state.total + ' file...';
       $('#itemLabel').textContent = '';
+      refreshControls();
     }
     function onFileStart(data) {
       state.active[data.id] = { name: data.name || data.id, done: 0, total: 0 };
@@ -496,6 +569,7 @@
       $('#bytesLabel').textContent = 'Selesai';
       $('#overallLabel').textContent = 'File ' + (data.total || 0) + '/' + (data.total || 0);
       setStatus('Selesai: ' + (data.ok || 0) + ' berhasil, ' + (data.skip || 0) + ' dilewati, ' + (data.fail || 0) + ' gagal.');
+      refreshControls();
     }
 
     let _lastAgg = { t: 0, bytes: 0, speed: 0 };
@@ -611,18 +685,15 @@
       $('#btnPreview').addEventListener('click', () => {
         const sel = selectedItems();
         if (!sel.length) { setStatus('Pilih item dulu.'); return; }
+        if (sel[0].is_folder) { setStatus('Pilih file (bukan folder) untuk preview.'); return; }
         apiCall('preview', [sel[0]]);
       });
+      $('#btnAbort').addEventListener('click', () => apiCall('abort'));
+      $('#btnRetry').addEventListener('click', retryFailed);
       $('#btnDownload').addEventListener('click', () => {
         const sel = selectedItems();
         if (!sel.length) { setStatus('Pilih item dulu.'); return; }
-        apiCall('start_clone', [{
-          items: sel,
-          recursive: state.opts.recursive,
-          quality: state.opts.quality,
-          parallel: state.opts.parallel,
-          skip_existing: state.opts.skip_existing,
-        }]);
+        beginClone(sel);
       });
       $('#btnCopyLog').addEventListener('click', (e) => {
         e.stopPropagation();
